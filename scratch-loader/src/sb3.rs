@@ -138,9 +138,9 @@ pub struct Variable(pub String, pub ScratchValue);
 impl_deser_for_tuple_struct!(Variable(0 => String, 1 => ScratchValue));
 
 #[derive(Debug)]
-pub struct List(pub String, pub Vec<ScratchValue>);
+pub struct List(pub String, pub Vec<(ScratchValue, ScratchValue)>);
 
-impl_deser_for_tuple_struct!(List(0 => String, 1 => Vec<ScratchValue>));
+impl_deser_for_tuple_struct!(List(0 => String, 1 => Vec<(ScratchValue, ScratchValue)>));
 
 pub type Broadcast = String;
 
@@ -164,26 +164,19 @@ pub struct Block {
 #[derive(Debug, Deserialize)]
 #[serde(untagged)]
 pub enum Input {
-    SubstackOrBoolReporterOrDefArg(u8 /* placeholder */, String),
-    Cons(
-        u8, /* placeholder */
-        (u8 /* placeholder */, ScratchValue),
-    ),
-    Reporter(
-        u8, /* placeholder */
-        String,
-        (u8, ScratchValue), /* placeholder */
-    ),
-    // ReporterOrDefArg(u8 /* placeholder */, String),
-    Var(
-        u8, /* placeholder */
-        (u8 /* placeholder */, String, String),
-        (u8, ScratchValue), /* placeholder */
-    ),
-    Broadcast(
-        u8, /* placeholder */
-        (u8 /* placeholder */, String, String),
-    ),
+    // 1 -> shadow & 2 -> no_shadow
+    NoHidden(u8, InputType),
+    // always 3
+    Hidden(u8, InputType, InputType),
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+pub enum InputType {
+    Block(String),
+    NumOrStr(u8, ScratchValue),
+    BroadcastOrVarOrList(u8, String, String),
+    TopVarOrList(u8, String, String, Num, Num),
 }
 
 #[derive(Debug)]
@@ -191,10 +184,38 @@ pub struct Field(pub String, pub Option<String>);
 
 impl_deser_for_tuple_struct!(Field(0 => String, 1 => Option<String>));
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 #[serde(untagged)]
 pub enum ScratchValue {
     Str(String),
     Num(Num),
     Bool(bool),
+}
+
+impl ScratchValue {
+    pub fn force_num(&self) -> Num {
+        match self {
+            Self::Num(num) => *num,
+            Self::Bool(true) => 1.0,
+            _ => 0.0,
+        }
+    }
+
+    #[allow(illegal_floating_point_literal_pattern)]
+    pub fn force_bool(&self) -> bool {
+        match self {
+            Self::Bool(bool) => *bool,
+            Self::Str(s) if s.as_str() == "" => false,
+            Self::Num(0.0) => false,
+            _ => true,
+        }
+    }
+
+    pub fn force_str(&self) -> String {
+        match self {
+            Self::Num(num) => num.to_string(),
+            Self::Bool(bool) => bool.to_string(),
+            Self::Str(str) => str.clone(),
+        }
+    }
 }
